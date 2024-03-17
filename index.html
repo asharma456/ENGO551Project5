@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Project 5: IoT Geoweb app</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <style>
+        body {
+            background-color: #1f1f1f;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            height: 600px; 
+            margin-bottom: 20px;
+        }
+
+        #connectionInfo {
+            margin-top: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .connected {
+            color: green;
+        }
+
+        .disconnected {
+            color: red;
+        }
+
+        .btn-group {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            margin: 0 5px;
+            background-color: yellow; 
+            color: black; 
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background-color: #f0e68c; 
+        }
+
+        label {
+            display: inline-block;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"] {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            width: 200px;
+        }
+
+        .btn-map-spacing {
+            margin-bottom: 20px;
+        }
+
+        .btn-topic-spacing {
+            margin-bottom: 10px;
+        }
+
+        .btn-share-send {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        #topicInput {
+            margin: 0 auto;
+            display: block;
+        }
+
+        .input-label {
+            display: block;
+            width: 80px;
+            margin: 0 auto; 
+            text-align: center; 
+        }
+
+        .btn-share-send button {
+            display: block;
+            margin: 10px auto;
+        }
+
+        #messageInput {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            width: 200px;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+
+<h1 style="text-align: center; margin-top: 20px;">Project 5: IoT Geoweb app</h1>
+
+<div id="connectionInfo" style="text-align: center;"></div>
+
+<div class="btn-group btn-map-spacing">
+    <button id="startButton" class="btn">Start Connection</button>
+    <button id="endButton" class="btn">End Connection</button>
+</div>
+
+<div id="map" style="display: none;"></div>
+
+<div class="btn-share-send">
+    <button id="shareButton" class="btn">Share My Status</button>
+    <button id="sendMessageButton" class="btn">Send Message</button>
+</div>
+
+<div class="btn-topic-spacing">
+    <label class="input-label" for="topicInput">Topic:</label>
+    <input type="text" id="topicInput" value="ENGO_551/Abhinav_Sharma/my_temperature">
+</div>
+
+<div class="btn-topic-spacing">
+    <label class="input-label" for="messageInput">Message:</label>
+    <input type="text" id="messageInput" placeholder="Enter your message">
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<script>
+    var map;
+    var client;
+    var brokerHost;
+    var brokerPort;
+    var marker;
+
+    function displayConnectionInfo() {
+        var connectionInfoElement = document.getElementById('connectionInfo');
+        if (brokerHost && brokerPort) {
+            connectionInfoElement.innerHTML = 'Broker Host: <strong>' + brokerHost + '</strong>, Connection Status: <span id="status" class="disconnected">Disconnected</span>, Broker Port: <strong>' + brokerPort + '</strong>';
+        } else {
+            connectionInfoElement.innerHTML = 'No connection information';
+        }
+    }
+
+    function updateConnectionStatus(connected) {
+        var statusElement = document.getElementById('status');
+        statusElement.textContent = connected ? 'Connected' : 'Disconnected';
+        statusElement.className = connected ? 'connected' : 'disconnected';
+        if (!connected) {
+            setTimeout(startConnection, 3000);
+        }
+    }
+
+    displayConnectionInfo();
+
+
+    function startConnection() {
+
+        document.getElementById('map').style.display = 'block';
+
+
+        map = L.map('map').setView([51.0447, -114.0719], 11);
+
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+
+        brokerHost = 'test.mosquitto.org';
+        brokerPort = 8080;
+        displayConnectionInfo();
+
+  
+        client = new Paho.MQTT.Client(brokerHost, brokerPort, 'ClientIdgaygay');
+        
+        var connectOptions = {
+            onSuccess: function () {
+                updateConnectionStatus(true);
+                var topic = document.getElementById('topicInput').value;
+                client.subscribe(topic);
+            },
+            onFailure: function (error) {
+                updateConnectionStatus(false);
+                document.getElementById('map').style.display = 'none';
+                brokerHost = null;
+                brokerPort = null;
+                displayConnectionInfo();
+            }
+        };
+
+        client.connect(connectOptions);
+
+        client.onConnectionLost = function (responseObject) {
+            updateConnectionStatus(false);
+            document.getElementById('map').style.display = 'none';
+            brokerHost = null;
+            brokerPort = null;
+            displayConnectionInfo();
+        };
+
+        client.onMessageArrived = function (message) {
+            var topic = message.destinationName;
+            if (topic === 'ENGO_551/Abhinav_Sharma/my_temperature') {
+                var geoJsonMessage = JSON.parse(message.payloadString);
+                var coordinates = geoJsonMessage.geometry.coordinates;
+                var temperature = geoJsonMessage.properties.temperature;
+
+                if (!marker) {
+                    marker = L.marker(coordinates).addTo(map);
+                } else {
+                    marker.setLatLng(coordinates);
+                }
+
+                if (temperature >= -40 && temperature < 10) {
+                    marker.setIcon(null);
+                } else {
+                    var markerColor = temperature < 30 ? 'green' : 'red';
+
+                    var markerIcon = L.icon({
+                        iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-' + markerColor + '.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    });
+
+                    marker.setIcon(markerIcon);
+                }
+
+                marker.bindPopup("Temperature: " + temperature + " °C").openPopup();
+            }
+        };
+    }
+
+    function endConnection() {
+        if (client) {
+            client.disconnect();
+            updateConnectionStatus(false);
+            document.getElementById('map').style.display = 'none';
+            brokerHost = null;
+            brokerPort = null;
+            displayConnectionInfo();
+        } else {
+            console.warn('MQTT client is not initialized.');
+        }
+    }
+
+    function sendMessage() {
+        if (client && client.isConnected()) {
+            var topic = document.getElementById('topicInput').value;
+            var message = document.getElementById('messageInput').value;
+            var messageObject = new Paho.MQTT.Message(message);
+            messageObject.destinationName = topic;
+            client.send(messageObject);
+            console.log(`Message published to topic ${topic}: ${message}`);
+        } else {
+            console.warn('MQTT client is not initialized or not connected.');
+        }
+    }
+
+    function shareLocation() {
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                var userLocation = [position.coords.latitude, position.coords.longitude];
+                map.setView(userLocation, 11);
+
+                var temperature = Math.floor(Math.random() * (40 - (-20)) + (-20));
+
+                var geoJsonMessage = {
+                    type: "Feature",
+                    geometry: {
+                        type: "Point",
+                        coordinates: userLocation
+                    },
+                    properties: {
+                        temperature: temperature
+                    }
+                };
+
+                var message = JSON.stringify(geoJsonMessage);
+
+                var topic = 'ENGO_551/Abhinav_Sharma/my_temperature';
+                if (client && client.isConnected()) {
+                    var messageObject = new Paho.MQTT.Message(message);
+                    messageObject.destinationName = topic;
+                    client.send(messageObject);
+                    console.log(`GeoJSON message published to topic ${topic}:`, message);
+                } else {
+                    console.warn('MQTT client is not initialized or not connected.');
+                }
+
+                var markerColor;
+                if (temperature >= -40 && temperature < 10) {
+                } else if (temperature < 30) {
+                    markerColor = 'green';
+                } else {
+                    markerColor = 'red';
+                }
+
+                var markerIcon = L.icon({
+                    iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-' + markerColor + '.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                });
+
+                marker = L.marker(userLocation, { icon: markerIcon }).addTo(map);
+
+                marker.bindPopup("Temperature: " + temperature + " °C").openPopup();
+            }, function(error) {
+                console.error('Error getting user location:', error);
+            });
+        } else {
+            console.error('Geolocation is not supported by this browser.');
+        }
+    }
+
+    document.getElementById('startButton').addEventListener('click', startConnection);
+    document.getElementById('endButton').addEventListener('click', endConnection);
+    document.getElementById('shareButton').addEventListener('click', shareLocation);
+    document.getElementById('sendMessageButton').addEventListener('click', sendMessage);
+
+</script>
+
+</body>
+</html>
