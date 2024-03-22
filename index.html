@@ -178,12 +178,13 @@
         }).addTo(map);
 
 
-        brokerHost = 'test.mosquitto.org';
-        brokerPort = 8080;
+        brokerHost = 'broker.emqx.io';
+        brokersetup='wss://broker.emqx.io:8084/mqtt'
+        brokerPort = 8084;
         displayConnectionInfo();
 
   
-        client = new Paho.MQTT.Client(brokerHost, brokerPort, 'ClientIdgaygay');
+        client = new Paho.MQTT.Client(brokersetup, 'ClientIdgaygay');
         
         var connectOptions = {
             onSuccess: function () {
